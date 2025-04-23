@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import sys
-from gc import callbacks
 
 
 import aiosqlite
@@ -35,15 +34,15 @@ async def set_commands(bot: Bot):
         ),
         BotCommand(
             command="add_dis",
-            description="Добавить новый район в базу данных"
+            description="Добавить район в список отслеживаемых"
         ),
         BotCommand(
             command="remove_dis",
-            description="Удалить район из базы данных"
+            description="Удалить район из списка отслеживаемых"
         ),
         BotCommand(
             command="update_time",
-            description="Измените вермя увеломления об отключении"
+            description="Изменить вермя увеломления"
         )
     ]
     await bot.set_my_commands(commands, BotCommandScopeDefault())
@@ -52,7 +51,7 @@ async def set_commands(bot: Bot):
 async def add_to_database(telegram_id, username):
     async with aiosqlite.connect('telegram.db') as db:
         await db.execute(
-            "CREATE TABLE IF NOT EXISTS users (telegram_id BIGINT, username TEXT, date TEXT, Октябрьский TEXT UNIQUE, Железнодорожный TEXT UNIQUE, Центральный TEXT UNIQUE, Советский TEXT UNIQUE, Ленинский TEXT UNIQUE, Кировский TEXT UNIQUE, Свердловский TEXT UNIQUE, date_parsing TEXT UNIQUE)")
+            "CREATE TABLE IF NOT EXISTS users (telegram_id BIGINT, username TEXT, date TEXT, Октябрьский TEXT, Железнодорожный TEXT, Центральный TEXT, Советский TEXT, Ленинский TEXT, Кировский TEXT, Свердловский TEXT, date_parsing TEXT)")
         cursor = await db.execute('SELECT * FROM users WHERE telegram_id = ?', (telegram_id,))
         data = await cursor.fetchone()
         if data is not None:
@@ -65,9 +64,9 @@ async def add_to_database(telegram_id, username):
         await db.commit()
 
 
-def get_keyboard1():
+def get_keyboard1(districts):
     keyboard_b = InlineKeyboardBuilder()
-    for name_district in data_districts:
+    for name_district in districts:
         keyboard_b.button(text=name_district, callback_data=name_district)
     keyboard_b.adjust(2, )
     return keyboard_b.as_markup()
@@ -86,7 +85,7 @@ async def add_district_to_database(name_district, user_id):
         await db.commit()
         return None
 
-async def remove_distric_from_database(name_district, user_id):
+async def remove_district_from_database(name_district, user_id):
     async with aiosqlite.connect('telegram.db') as db:
         await db.execute(f"UPDATE users SET {name_district} = ? WHERE telegram_id = ?", (False, user_id))
         await db.commit()
@@ -105,7 +104,7 @@ async def command_start_handler(message: Message, bot: Bot) -> None:
     await set_commands(bot)
     await message.answer(
         f"Привет, {html.bold(message.from_user.full_name)}!, Вы зарегестрированы на наш сервис, уведомляющий об отключении воды! Из приведённого ниже списка районов выбирите подходящие вам.",
-        reply_markup=get_keyboard1())
+        reply_markup=get_keyboard1(data_districts))
     # await message.answer(f"{variants}")
     talegram_id = message.from_user.id
     username = message.from_user.username
@@ -113,14 +112,22 @@ async def command_start_handler(message: Message, bot: Bot) -> None:
 
 @dp.message(F.text == 'тест')
 async def test(message: Message):
-    id = 504535913
+    id = message.from_user.id
+    districts_not_added = []
+    connect = await aiosqlite.connect('telegram.db')
+    async with connect.cursor() as cur:
+        await cur.execute(f"SELECT * FROM users WHERE telegram_id = ?", (id, ))
 
-    async with aiosqlite.connect('telegram.db').cursor() as db:
-        res = await db.execute(f"SELECT * FROM users WHERE telegram_id = ?", (id,))
-        print(res.fetchall())
+        res = await cur.fetchone()
+        res = list(res)[3:-1]
+        for el in range(len(res)):
+            if res[el] == '0':
+                districts_not_added.append(data_districts[el])
 
+        print(res)
+        print(districts_not_added)
 
-
+###
 
 @dp.callback_query(F.data.in_(data_districts))
 async def add_to_control_district(call: CallbackQuery):
@@ -130,6 +137,12 @@ async def add_to_control_district(call: CallbackQuery):
     # ЗДЕСЬ ДОЛЖЕН БЫТЬ КОНЕЦ ДОБАВЛЕНИЯ
     await call.answer()
 
+#@dp.callback_query(F.data.in_(data_districts))
+#async def remove_from_control_district(call: CallbackQuery):
+#    await call.message.answer(f'Вы выбрали {call.data} район')
+#    await remove_district_from_database(call.data, str(call.from_user.id))
+#    await call.answer()
+
 @dp.callback_query(F.data.in_(data_time_parsing))
 async def add_to_control_time(call: CallbackQuery):
     await call.message.answer(f'Вы выбрали {call.data}')
@@ -137,31 +150,83 @@ async def add_to_control_time(call: CallbackQuery):
     await call.answer()
 
 ###
+
+@dp.message(Command("add_dis"))
 async def add_dis(message: Message, bot: Bot):
+    id = message.from_user.id
+    districts_not_added = []
+    connect = await aiosqlite.connect('telegram.db')
+    async with connect.cursor() as cur:
+        await cur.execute(f"SELECT * FROM users WHERE telegram_id = ?", (id, ))
+
+        res = await cur.fetchone()
+        res = list(res)[3:-1]
+        for el in range(len(res)):
+            if res[el] == '0':
+                districts_not_added.append(data_districts[el])
+
     await message.answer(
-        f"Из перечня районов выберите подходящий вам", reply=get_keyboard1()
+        "Из перечня районов выберите подходящий вам",
+        reply_markup=get_keyboard1(districts_not_added),
     )
-    talegram_id = message.from_user.id
-    username = message.from_user.username
-    await add_district_to_database()
 
 
 @dp.message(Command("remove_dis"))
-async def remove_dis(message: Message):
-    await message.answer(
-        f"Из перечня выберите районы для удаления из базы данных", reply=get_keyboard1()
-    )
-    talegram_id = message.from_user.id
-    username = message.from_user.username
-    await remove_distric_from_database()
+async def remove_dis(message: Message, bot: Bot):
+    id = message.from_user.id
+    districts_added = []
+    connect = await aiosqlite.connect('telegram.db')
+    async with connect.cursor() as cur:
+        await cur.execute(f"SELECT * FROM users WHERE telegram_id = ?", (id, ))
 
+        res = await cur.fetchone()
+        res = list(res)[3:-1]
+        for el in range(len(res)):
+            if res[el] == '1':
+                districts_added.append(data_districts[el])
+
+    await message.answer(
+        "Из перечня районов выберите подходящий вам",
+        reply_markup=get_keyboard1(districts_added),
+    )
+
+
+@dp.message(Command("show_data"))
+async def show_data(message: Message, bot: Bot):
+    id = message.from_user.id
+    data_show = []
+    connect = await aiosqlite.connect('telegram.db')
+    async with connect.cursor() as cur:
+        await cur.execute(f"SELECT * FROM users WHERE telegram_id = ?", (id,))
+        res = await cur.fetchone()
+        res = list(res)[3:-1]
+        for el in range(len(res)):
+            if res[el] == '1':
+                data_show.append(data_districts[el])
+    await message.answer(
+        f"В списке отслеживаемых районов находятся:\n{", ".join(data_show)}"
+    )
+
+
+@dp.message(Command("update_time"))
 async def update_time(message: Message, bot: Bot):
+    id = message.from_user.id
+    the_day = ""
+    connect = await aiosqlite.connect('telegram.db')
+    async with connect.cursor() as cur:
+        await cur.execute(f"SELECT * FROM users WHERE telegram_id = ?", (id,))
+        res = await cur.fetchone()
+        res = list(res)[-1]
+        the_day = res
+        data_days = []
+        for el in data_time_parsing:
+            if el != the_day:
+                data_days.append(el)
+
     await message.answer(
-        f"Из перечня выберите день недели для получения уведомления"
+        "Из перечня дней выберите подходящий вам",
+        reply_markup=get_keyboard2(),
     )
-###
-
-
 
 
 async def main() -> None:
