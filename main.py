@@ -10,7 +10,7 @@ from aiogram import Bot, Dispatcher, html, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart, Command
-from aiogram.types import Message, InlineKeyboardMarkup, CallbackQuery
+from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import BotCommand, BotCommandScopeDefault
 
@@ -71,6 +71,14 @@ def get_keyboard1(districts):
     keyboard_b.adjust(2, )
     return keyboard_b.as_markup()
 
+
+def get_keyboard_delete_district(districts):
+    keyboard_b = InlineKeyboardBuilder()
+    for name_district in districts:
+        keyboard_b.button(text=name_district, callback_data='удалить'+ name_district)
+    keyboard_b.adjust(2, )
+    return keyboard_b.as_markup()
+
 def get_keyboard2():
     keyboard_b = InlineKeyboardBuilder()
     for name_time in data_time_parsing:
@@ -85,7 +93,10 @@ async def add_district_to_database(name_district, user_id):
         await db.commit()
         return None
 
-async def remove_district_from_database(name_district, user_id):
+
+async def remove_district_from_database(call: CallbackQuery):
+    user_id = call.from_user.id
+    name_district = call.data.replace('удалить', '')
     async with aiosqlite.connect('telegram.db') as db:
         await db.execute(f"UPDATE users SET {name_district} = ? WHERE telegram_id = ?", (False, user_id))
         await db.commit()
@@ -127,8 +138,7 @@ async def test(message: Message):
         print(res)
         print(districts_not_added)
 
-###
-
+###CALLBACK
 @dp.callback_query(F.data.in_(data_districts))
 async def add_to_control_district(call: CallbackQuery):
     await call.message.answer(f'Вы выбрали {call.data} район')
@@ -136,6 +146,7 @@ async def add_to_control_district(call: CallbackQuery):
     await add_district_to_database(call.data, str(call.from_user.id))
     # ЗДЕСЬ ДОЛЖЕН БЫТЬ КОНЕЦ ДОБАВЛЕНИЯ
     await call.answer()
+
 
 #@dp.callback_query(F.data.in_(data_districts))
 #async def remove_from_control_district(call: CallbackQuery):
@@ -184,10 +195,11 @@ async def remove_dis(message: Message, bot: Bot):
         for el in range(len(res)):
             if res[el] == '1':
                 districts_added.append(data_districts[el])
+    print(districts_added)
 
     await message.answer(
         "Из перечня районов выберите подходящий вам",
-        reply_markup=get_keyboard1(districts_added),
+        reply_markup=get_keyboard_delete_district(districts_added),
     )
 
 
@@ -222,7 +234,6 @@ async def update_time(message: Message, bot: Bot):
         for el in data_time_parsing:
             if el != the_day:
                 data_days.append(el)
-
     await message.answer(
         "Из перечня дней выберите подходящий вам",
         reply_markup=get_keyboard2(),
