@@ -52,20 +52,18 @@ async def add_district_to_database(name_district, user_id):
     async with aiosqlite.connect('telegram.db') as db:
         await db.execute(f"UPDATE users SET {name_district} = ? WHERE telegram_id = ?", (True, user_id))
         await db.commit()
-        return None
+        return
 
 
-async def remove_district_from_database(call: CallbackQuery):
-    user_id = call.from_user.id
-    name_district = call.data.replace('удалить', '')
+async def remove_district_from_database(name_district, user_id):
     async with aiosqlite.connect('telegram.db') as db:
         await db.execute(f"UPDATE users SET {name_district} = ? WHERE telegram_id = ?", (False, user_id))
         await db.commit()
-        return None
+        return
 
 
 async def update_time_parsing(time_par, user_id):
     async with aiosqlite.connect('telegram.db') as db:
-        await db.execute(f"UPDATE users SET {time_par} = ? WHERE  = ?", (time_par, user_id))
+        await db.execute(f"UPDATE users SET date_parsing = ? WHERE telegram_id = ?", (time_par, user_id))
         await db.commit()
-        return None
+        return
