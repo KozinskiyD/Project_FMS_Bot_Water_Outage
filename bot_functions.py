@@ -1,14 +1,18 @@
 import aiosqlite
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
 from aiogram import Router
 from aiogram import Bot, html, F
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, CallbackQuery
+from apscheduler.triggers.cron import CronTrigger
 
-from const import data_districts, data_time_parsing, data_emoji
+from const import data_districts, data_time_parsing, data_emoji, parts_district, data_time_parsing_eg
 from keyboards import get_keyboard_add_district, get_keyboard_update_time, get_keyboard_delete_district
 from handlers import set_commands, add_to_database, add_district_to_database, remove_district_from_database, \
     update_time_parsing
+from parser import api
 
 my_router = Router(name=__name__)
 
@@ -17,9 +21,8 @@ my_router = Router(name=__name__)
 async def command_start_handler(message: Message, bot: Bot) -> None:
     await set_commands(bot)
     await message.answer(
-        f"Привет, {html.bold(message.from_user.full_name)}!, Вы зарегестрированы на наш сервис, уведомляющий об отключении воды! Из приведённого ниже списка районов выбирите подходящие вам.",
+        f"Привет, {html.bold(message.from_user.full_name)}! Вы зарегистрированы на наш сервис, уведомляющий об отключении воды! Из приведённого ниже списка районов выбирите подходящие вам.\nПосле регистрации не забудьте использовать команду <b>/start_parsing</b>!\nПеред использованием этой функции, настройте дополнительные данные!",
         reply_markup=get_keyboard_add_district(data_districts))
-    # await message.answer(f"{variants}")
     talegram_id = message.from_user.id
     username = message.from_user.username
     await add_to_database(talegram_id, username)
@@ -29,9 +32,7 @@ async def command_start_handler(message: Message, bot: Bot) -> None:
 async def add_to_control_district(call: CallbackQuery):
     await call.message.edit_reply_markup()
     await call.message.answer(f'Вы добавили {call.data} район')
-    # ЗДЕСЬ НАДО ОТОСЛАТЬ РАЙОН В БАЗУ
     await add_district_to_database(call.data, str(call.from_user.id))
-    # ЗДЕСЬ ДОЛЖЕН БЫТЬ КОНЕЦ ДОБАВЛЕНИЯ
     await call.answer()
 
 
@@ -127,3 +128,65 @@ async def show_data(message: Message, bot: Bot):
         f"В списке отслеживаемых районов находятся:\n"
         f"<blockquote><b>{"\n".join(data_text)}</b></blockquote>"
         f"Время уведомления: <b>{day}</b>")
+
+
+@my_router.message(Command("show_info"))
+async def show_info(message: Message):
+    id = message.from_user.id
+    data_show = []
+    connect = await aiosqlite.connect('telegram.db')
+    async with connect.cursor() as cur:
+        await cur.execute(f"SELECT * FROM users WHERE telegram_id = ?", (id,))
+        res = await cur.fetchone()
+        res = list(res)[3:-1]
+        for el in range(len(res)):
+            if res[el] == '1':
+                data_show.append(data_districts[el] + " район")
+        data_text = []
+        for dist in data_show:
+            for stre in parts_district:
+                info = api().find_data(dist, stre)
+                if info == None:
+                    continue
+                if "водоснабжение" in info[0] and info[-1] != "отмена":
+                    data_text.append(info)
+            if len(data_text) == 0:
+                await message.answer(
+                    f"<b>{dist}:</b>\nПо данному запросу не была найдена информация по отключению воды"
+                )
+            else:
+                await message.answer(f"<b>{dist}</b> - информация по отключению:")
+                for el in data_text:
+                    await message.answer(
+                        f"<b>Организация:</b> {el[1]}\n"
+                        f"<b>Номер телефона:</b> {el[2]}, {el[2]}\n"
+                        f"<b>Улицы:\n</b>"
+                        f"<blockquote>{el[4]}</blockquote>\n"
+                        f"<b>Начало - Завершение:</b> {el[-2]} - {el[-1]}"
+                    )
+
+
+
+@my_router.message(Command("start_parsing"))
+async def show_info_day(message: Message):
+    id = message.from_user.id
+    connect = await aiosqlite.connect('telegram.db')
+    async with connect.cursor() as cur:
+        await cur.execute(f"SELECT * FROM users WHERE telegram_id = ?", (id,))
+        res = await cur.fetchone()
+        day = list(res)[-1]
+    sscheduler = AsyncIOScheduler()
+    sscheduler.add_job(
+        show_info,
+        trigger="interval",
+        seconds=3600 * 24 * 5,
+        kwargs={'message': message}
+    )
+    sscheduler.start()
+    sscheduler_day = AsyncIOScheduler()
+    sscheduler_day.add_job(
+        show_info,
+        trigger=CronTrigger(day_of_week=data_time_parsing_eg[data_time_parsing.index(day)]),
+        kwargs={'message': message}
+    )
+    sscheduler_day.start()

@@ -2,7 +2,6 @@ import datetime
 import aiosqlite
 
 from aiogram import Bot
-from aiogram.types import CallbackQuery
 from aiogram.types import BotCommand, BotCommandScopeDefault
 
 
@@ -10,23 +9,31 @@ async def set_commands(bot: Bot):
     commands = [
         BotCommand(
             command='start',
-            description="Зарегестрироваться и начать работу"
+            description="✅ Зарегестрироваться и начать работу"
         ),
         BotCommand(
             command="show_data",
-            description="Показать отслеживаемые районы"
+            description="👀 Показать отслеживаемые районы"
         ),
         BotCommand(
             command="add_dis",
-            description="Добавить район в список отслеживаемых"
+            description="➕ Добавить район в список отслеживаемых"
         ),
         BotCommand(
             command="remove_dis",
-            description="Удалить район из списка отслеживаемых"
+            description="➖ Удалить район из списка отслеживаемых"
         ),
         BotCommand(
             command="update_time",
-            description="Изменить вермя увеломления"
+            description="🗓️ Изменить вермя увеломления"
+        ),
+        BotCommand(
+            command="show_info",
+            description="ℹ️ Показать информацию по отслеживаемым районам"
+        ),
+        BotCommand(
+            command="start_parsing",
+            description="🚀 Активация процесса автономного парсинга"
         )
     ]
     await bot.set_my_commands(commands, BotCommandScopeDefault())
@@ -67,3 +74,4 @@ async def update_time_parsing(time_par, user_id):
         await db.execute(f"UPDATE users SET date_parsing = ? WHERE telegram_id = ?", (time_par, user_id))
         await db.commit()
         return
+
